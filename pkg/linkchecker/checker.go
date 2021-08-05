@@ -3,6 +3,7 @@ package linkchecker
 import (
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/antchfx/htmlquery"
 )
@@ -41,12 +42,37 @@ func IsLinkUp(client *http.Client, url string) (up bool) {
 }
 
 func GetBrokenLinks(client *http.Client, links []string) []string {
-	brokenLinks := make([]string, 0)
+	brokenLinks := make(chan string, 100)
+	// processed := make(chan bool, 100)
+	var wg sync.WaitGroup
+
 	for _, link := range links {
-		if !IsLinkUp(client, link) {
-			brokenLinks = append(brokenLinks, link)
+		link := link
+		go func() {
+			if !IsLinkUp(client, link) {
+				defer wg.Done()
+				wg.Add(1)
+				brokenLinks  <- link
+				// processed <- true
+			}
+		}()
+	}
+	discoveredBrokenLinks := make([]string, 0)
+
+	collector := func() {
+		for {
+			wg.Add(1)
+			select {
+				case link := <- brokenLinks:
+					discoveredBrokenLinks = append(discoveredBrokenLinks, link)
+			}
+			wg.Done()
 		}
 	}
+	go collector()
+	wg.Wait()
+	//Now we can just empty the brokenLinks channel and we will be finished.
 
-	return brokenLinks
+
+	return discoveredBrokenLinks
 }
