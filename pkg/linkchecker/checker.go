@@ -21,8 +21,12 @@ func GetListOfLinks(reader io.Reader) []string {
 	return links
 }
 
-func VerifyStatus(client *http.Client, url string) (httpStatus int, ok bool) {
+
+func IsLinkUp(client *http.Client, url string) (up bool) {
 	resp, err := client.Head(url)
+	if err != nil {
+		return false
+	}
 	var statusCode int
 	if resp != nil {
 		statusCode = resp.StatusCode
@@ -32,5 +36,17 @@ func VerifyStatus(client *http.Client, url string) (httpStatus int, ok bool) {
 	if resp.Body != nil {
 		resp.Body.Close()
 	}
-	return statusCode, err == nil
+	// todo let's check the status code against a list of known good status codes
+	return statusCode == http.StatusOK
+}
+
+func GetBrokenLinks(client *http.Client, links []string) []string {
+	brokenLinks := make([]string, 0)
+	for _, link := range links {
+		if !IsLinkUp(client, link) {
+			brokenLinks = append(brokenLinks, link)
+		}
+	}
+
+	return brokenLinks
 }

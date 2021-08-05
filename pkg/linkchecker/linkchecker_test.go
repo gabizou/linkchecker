@@ -23,24 +23,43 @@ func TestLinkStatus(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusOK)
 	}))
-	status, ok := linkchecker.VerifyStatus(server.Client(), server.URL)
-	if !ok {
+	up := linkchecker.IsLinkUp(server.Client(), server.URL)
+	if !up {
 		t.Fatal("got not ok statement")
-	}
-	if status != http.StatusOK {
-		t.Fatalf("Got a non ok status %d", status)
 	}
 }
 
+// what is a broken link?
+// TestNotOk checks if a link is down
 func TestNotOk(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		http.Error(writer, "Service Unavailable", http.StatusInternalServerError)
 	}))
-	status, ok := linkchecker.VerifyStatus(server.Client(), server.URL)
-	if ok {
-		t.Fatal("got ok statement")
+	up := linkchecker.IsLinkUp(server.Client(), server.URL)
+	if up {
+		t.Fatal("Report up for a bad link")
 	}
-	if status != http.StatusInternalServerError {
-		t.Fatalf("Got a non 500 status %d", status)
+}
+
+func TestVerifyBrokenLinks(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "Service Unavailable", http.StatusInternalServerError)
+	}))
+	want := []string{server.URL}
+	got := linkchecker.GetBrokenLinks(server.Client(), want)
+	if !cmp.Equal(want, got) {
+		t.Fatal(cmp.Diff(want, got))
+	}
+}
+
+func TestVerifyValidLinks(t *testing.T) {
+	want := []string{}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	}))
+	links := []string{server.URL}
+	got := linkchecker.GetBrokenLinks(server.Client(), links)
+	if !cmp.Equal(want, got) {
+		t.Fatal(cmp.Diff(want, got))
 	}
 }
