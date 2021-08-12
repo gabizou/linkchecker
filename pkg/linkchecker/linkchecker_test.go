@@ -63,3 +63,14 @@ func TestVerifyValidLinks(t *testing.T) {
 		t.Fatal(cmp.Diff(want, got))
 	}
 }
+
+func TestNewSyncSlice(t *testing.T) {
+	slice := linkchecker.NewSyncSlice()
+	if slice.Items == nil {
+		t.Fatal("links is nil")
+	}
+	slice.Append("www.example.com")
+	if len(slice.Items) != 1 {
+		t.Fatalf("items array elements: want %d, got %d", 1, len(slice.Items))
+	}
+}
