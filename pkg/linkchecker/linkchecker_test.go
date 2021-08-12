@@ -1,9 +1,9 @@
 package linkchecker_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"com.gabizou/actors/pkg/linkchecker"
@@ -11,9 +11,12 @@ import (
 )
 
 func TestLinkChecker(t *testing.T) {
-	reader := strings.NewReader(`<a href="https://google.com/"/a>`)
-	lines := linkchecker.GetListOfLinks(reader)
-	expected := []string{"https://google.com/"}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, "https://www.example.com/")
+	}))
+	lines := linkchecker.GetListOfLinks(server.Client(), server.URL)
+	expected := []string{"https://www.example.com/"}
 	if !cmp.Equal(expected, lines) {
 		t.Fatal(cmp.Diff(expected, lines))
 	}
@@ -46,7 +49,7 @@ func TestVerifyBrokenLinks(t *testing.T) {
 		http.Error(writer, "Service Unavailable", http.StatusInternalServerError)
 	}))
 	want := []string{server.URL}
-	got := linkchecker.GetBrokenLinks(server.Client(), want)
+	got, _ := linkchecker.ParseLinks(server.Client(), want)
 	if !cmp.Equal(want, got) {
 		t.Fatal(cmp.Diff(want, got))
 	}
@@ -58,7 +61,7 @@ func TestVerifyValidLinks(t *testing.T) {
 		writer.WriteHeader(http.StatusOK)
 	}))
 	links := []string{server.URL}
-	got := linkchecker.GetBrokenLinks(server.Client(), links)
+	got, _ := linkchecker.ParseLinks(server.Client(), links)
 	if !cmp.Equal(want, got) {
 		t.Fatal(cmp.Diff(want, got))
 	}
@@ -72,5 +75,20 @@ func TestNewSyncSlice(t *testing.T) {
 	slice.Append("www.example.com")
 	if len(slice.Items) != 1 {
 		t.Fatalf("items array elements: want %d, got %d", 1, len(slice.Items))
+	}
+}
+
+func TestVerifySubPages(t *testing.T) {
+	badServer := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "Service Unavailable", http.StatusInternalServerError)
+	}))
+	want := []string{badServer.URL}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, badServer.URL)
+	}))
+	got := linkchecker.CrawlPageRecusively(server.Client(), server.URL)
+	if !cmp.Equal(want, got) {
+		t.Fatal(cmp.Diff(want, got))
 	}
 }
