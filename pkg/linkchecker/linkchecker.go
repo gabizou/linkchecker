@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/antchfx/htmlquery"
@@ -84,7 +85,7 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 			continue
 		}
 		// if it is not in our domain we skip
-		if !isInOurDomain(link) {
+		if !IsInOurDomain(link) {
 			continue
 		}
 		// otherwise we get it's body & add links to linksToCrawl
@@ -95,8 +96,14 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 	return brokenLinks
 }
 
-func isInOurDomain(link string) bool {
-	return true
+func IsInOurDomain(link string) bool {
+	domain := "bitfieldconsulting.com"
+	parse, err := url.Parse(link)
+	if err != nil {
+		return false
+	}
+	fmt.Fprintf(debug, "Host: %s\n", parse.Host)
+	return parse.Host == domain
 }
 
 func ParseLinks(client *http.Client, links []string) (broken []string, working []string) {

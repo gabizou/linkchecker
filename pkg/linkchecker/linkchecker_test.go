@@ -92,3 +92,22 @@ func TestVerifySubPages(t *testing.T) {
 		t.Fatal(cmp.Diff(want, got))
 	}
 }
+
+func TestIsInOurDomain(t *testing.T) {
+	testCases := []struct {
+		link string
+		want  bool
+	}{
+		{"http://www.google.com", false},
+		{"https://www.google.com", false},
+		{"https://www.google.com/bitfieldconsulting.com/you'vebeengotten", false},
+		{"https://bitfieldconsulting.com/", true},
+		{"https://bitfieldconsulting.com/moreStuff", true},
+	}
+	for _, tc := range testCases {
+		got := linkchecker.IsInOurDomain(tc.link)
+		if tc.want != got {
+			t.Errorf("Link: %s, Want: %t, got: %t", tc.link, tc.want, got)
+		}
+	}
+}
