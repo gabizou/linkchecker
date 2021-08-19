@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"com.gabizou/actors/pkg/linkchecker"
@@ -87,7 +88,8 @@ func TestVerifySubPages(t *testing.T) {
 		writer.WriteHeader(http.StatusOK)
 		fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, badServer.URL)
 	}))
-	got := linkchecker.CrawlPageRecusively(server.Client(), server.URL)
+	linkchecker.Debug = os.Stdout
+	got := linkchecker.CrawlPageRecusively(server.Client(), "127.0.0.1", server.URL)
 	if !cmp.Equal(want, got) {
 		t.Fatal(cmp.Diff(want, got))
 	}
@@ -105,7 +107,7 @@ func TestIsInOurDomain(t *testing.T) {
 		{"https://bitfieldconsulting.com/moreStuff", true},
 	}
 	for _, tc := range testCases {
-		got := linkchecker.IsInOurDomain(tc.link)
+		got := linkchecker.IsInOurDomain(tc.link, "bitfieldconsulting.com")
 		if tc.want != got {
 			t.Errorf("Link: %s, Want: %t, got: %t", tc.link, tc.want, got)
 		}

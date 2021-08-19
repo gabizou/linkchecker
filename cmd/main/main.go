@@ -2,13 +2,16 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"os"
 
-	"com.gabizou/actors/pkg/actor"
+	"com.gabizou/actors/pkg/linkchecker"
 )
 
 func main() {
-	f := actor.New()
-	f.SetGreeting("hello")
-	fmt.Println(f.GreetMe("world"))
-
+	linkchecker.Debug = os.Stdout
+	brokenLinks := linkchecker.CrawlPageRecusively(http.DefaultClient, "bitfieldconsulting.com", "https://bitfieldconsulting.com/")
+	for _, link := range brokenLinks {
+		fmt.Printf("BROKEN: %s\n", link)
+	}
 }

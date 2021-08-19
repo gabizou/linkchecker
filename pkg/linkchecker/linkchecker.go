@@ -3,8 +3,10 @@ package linkchecker
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/antchfx/htmlquery"
@@ -50,7 +52,7 @@ func (ss *syncSlice) Append(s string) {
 var Debug = io.Discard
 
 func IsLinkUp(client *http.Client, url string) (up bool) {
-	fmt.Fprintln(Debug, "IsLinkUp")
+	fmt.Fprintf(Debug, "IsLinkUp: %s\n", url)
 	resp, err := client.Head(url)
 	fmt.Fprintln(Debug, "GOT HEAD")
 	if err != nil {
@@ -66,10 +68,11 @@ func IsLinkUp(client *http.Client, url string) (up bool) {
 		resp.Body.Close()
 	}
 	// todo let's check the status code against a list of known good status codes
+	fmt.Fprintf(Debug, "Status Code for: %s \n is: %s\n", url, statusCode)
 	return statusCode == http.StatusOK
 }
 
-func CrawlPageRecusively(client *http.Client, link string) []string {
+func CrawlPageRecusively(client *http.Client, domain, link string) []string {
 	var brokenLinks []string
 	linksToCrawl := make([]string, 1)
 	linksToCrawl[0] = link
@@ -85,7 +88,7 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 			continue
 		}
 		// if it is not in our domain we skip
-		if !IsInOurDomain(link) {
+		if !IsInOurDomain(link, domain) {
 			continue
 		}
 		// otherwise we get it's body & add links to linksToCrawl
@@ -96,14 +99,23 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 	return brokenLinks
 }
 
-func IsInOurDomain(link string) bool {
-	domain := "bitfieldconsulting.com"
+func IsInOurDomain(link, domain string) bool {
 	parse, err := url.Parse(link)
 	if err != nil {
 		return false
 	}
-	fmt.Fprintf(Debug, "Host: %s\n", parse.Host)
-	return parse.Host == domain
+	fmt.Fprintf(Debug, "Full Host: %s\n", parse.Host)
+	host := parse.Host
+	if strings.Contains(parse.Host, ":") {
+		splitHost, _, err := net.SplitHostPort(parse.Host)
+		if err != nil {
+			fmt.Fprintf(Debug, "SplitHostPort err on: %s\n", parse.Host)
+			return false
+		}
+		host = splitHost
+	}
+	fmt.Fprintf(Debug, "Host: %s\n", host)
+	return host == domain
 }
 
 func ParseLinks(client *http.Client, links []string) (broken []string, working []string) {
