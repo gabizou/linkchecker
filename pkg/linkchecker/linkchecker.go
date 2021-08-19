@@ -47,12 +47,12 @@ func (ss *syncSlice) Append(s string) {
 	ss.Items = append(ss.Items, s)
 }
 
-var debug = io.Discard
+var Debug = io.Discard
 
 func IsLinkUp(client *http.Client, url string) (up bool) {
-	fmt.Fprintln(debug, "IsLinkUp")
+	fmt.Fprintln(Debug, "IsLinkUp")
 	resp, err := client.Head(url)
-	fmt.Fprintln(debug, "GOT HEAD")
+	fmt.Fprintln(Debug, "GOT HEAD")
 	if err != nil {
 		return false
 	}
@@ -102,7 +102,7 @@ func IsInOurDomain(link string) bool {
 	if err != nil {
 		return false
 	}
-	fmt.Fprintf(debug, "Host: %s\n", parse.Host)
+	fmt.Fprintf(Debug, "Host: %s\n", parse.Host)
 	return parse.Host == domain
 }
 
@@ -114,10 +114,10 @@ func ParseLinks(client *http.Client, links []string) (broken []string, working [
 		link := link
 		wg.Add(1)
 		go func() {
-			fmt.Fprintln(debug, "inside go func")
+			fmt.Fprintln(Debug, "inside go func")
 			defer wg.Done()
 			isLinkBroken := !IsLinkUp(client, link)
-			fmt.Fprintf(debug, "isLinkBroken: %v\n", isLinkBroken)
+			fmt.Fprintf(Debug, "isLinkBroken: %v\n", isLinkBroken)
 			if isLinkBroken {
 				brokenLinks.Append(link)
 			} else {
