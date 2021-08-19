@@ -1,6 +1,8 @@
 package linkchecker
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"sync"
 
@@ -12,7 +14,7 @@ func GetListOfLinks(client *http.Client, link string) []string {
 	if err != nil {
 		return nil
 	}
-	if get.StatusCode != http.StatusOK  {
+	if get.StatusCode != http.StatusOK {
 		return nil
 	}
 	doc, err := htmlquery.Parse(get.Body)
@@ -29,7 +31,6 @@ func GetListOfLinks(client *http.Client, link string) []string {
 	return links
 }
 
-
 type syncSlice struct {
 	Items []string
 	mutex sync.Mutex
@@ -45,8 +46,12 @@ func (ss *syncSlice) Append(s string) {
 	ss.Items = append(ss.Items, s)
 }
 
+var debug = io.Discard
+
 func IsLinkUp(client *http.Client, url string) (up bool) {
+	fmt.Fprintln(debug, "IsLinkUp")
 	resp, err := client.Head(url)
+	fmt.Fprintln(debug, "GOT HEAD")
 	if err != nil {
 		return false
 	}
@@ -83,8 +88,8 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 			continue
 		}
 		// otherwise we get it's body & add links to linksToCrawl
-		 subLinks := GetListOfLinks(client, link)
-		 linksToCrawl = append(linksToCrawl, subLinks...)
+		subLinks := GetListOfLinks(client, link)
+		linksToCrawl = append(linksToCrawl, subLinks...)
 	}
 
 	return brokenLinks
@@ -94,21 +99,23 @@ func isInOurDomain(link string) bool {
 	return true
 }
 
-func ParseLinks(client *http.Client, links []string) ([]string, []string) {
+func ParseLinks(client *http.Client, links []string) (broken []string, working []string) {
 	var wg sync.WaitGroup
 	brokenLinks := NewSyncSlice()
 	workingLinks := NewSyncSlice()
 	for _, link := range links {
 		link := link
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
+			fmt.Fprintln(debug, "inside go func")
 			defer wg.Done()
-			if !IsLinkUp(client, link) {
+			isLinkBroken := !IsLinkUp(client, link)
+			fmt.Fprintf(debug, "isLinkBroken: %v\n", isLinkBroken)
+			if isLinkBroken {
 				brokenLinks.Append(link)
 			} else {
 				workingLinks.Append(link)
 			}
-			wg.Done()
 		}()
 	}
 	wg.Wait()
