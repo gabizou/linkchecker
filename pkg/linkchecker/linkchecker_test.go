@@ -27,9 +27,31 @@ func TestLinkStatus(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusOK)
 	}))
-	up := linkchecker.IsLinkUp(server.Client(), server.URL)
-	if !up {
+	got := linkchecker.GetLinkStatus(server.Client(), server.URL)
+	if got != linkchecker.Up {
 		t.Fatal("got not ok statement")
+	}
+}
+
+func TestLinkStatusTooManyRequests(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	got := linkchecker.GetLinkStatus(server.Client(), server.URL)
+	if got != linkchecker.RateLimited {
+		t.Fatal("got not RateLimited statement")
+	}
+}
+
+// what is a broken link?
+// TestLinkStatus_Down checks if a link is down
+func TestLinkStatus_Down(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "Service Unavailable", http.StatusInternalServerError)
+	}))
+	got := linkchecker.GetLinkStatus(server.Client(), server.URL)
+	if got != linkchecker.Down {
+		t.Fatal("Report up for a bad link")
 	}
 }
 
@@ -50,18 +72,6 @@ func TestCannonicalURL_Absolute(t *testing.T) {
 	got := linkchecker.CanonnicalizeURL("https", domain, input)
 	if want != got {
 		t.Fatalf("Want: %s, Got: %s", want, got)
-	}
-}
-
-// what is a broken link?
-// TestNotOk checks if a link is down
-func TestNotOk(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		http.Error(writer, "Service Unavailable", http.StatusInternalServerError)
-	}))
-	up := linkchecker.IsLinkUp(server.Client(), server.URL)
-	if up {
-		t.Fatal("Report up for a bad link")
 	}
 }
 

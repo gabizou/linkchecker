@@ -51,14 +51,14 @@ func (ss *syncSlice) Append(s string) {
 
 var Debug = io.Discard
 
-func IsLinkUp(client *http.Client, url string) (up bool) {
+func GetLinkStatus(client *http.Client, url string) PageStatus {
 	// if there is no colon in the url then prepend the domain to the url
-	fmt.Fprintf(Debug, "IsLinkUp: %s\n", url)
+	fmt.Fprintf(Debug, "GetLinkStatus: %s\n", url)
 	resp, err := client.Head(url)
 	fmt.Fprintln(Debug, "GOT HEAD")
 	if err != nil {
 		fmt.Fprintf(Debug, "Err when getting head: %v", err)
-		return false
+		return Down
 	}
 	var statusCode int
 	if resp != nil {
@@ -71,7 +71,14 @@ func IsLinkUp(client *http.Client, url string) (up bool) {
 	}
 	// todo let's check the status code against a list of known good status codes
 	fmt.Fprintf(Debug, "Status Code for: %s \n is: %d\n", url, statusCode)
-	return statusCode == http.StatusOK
+	if statusCode == http.StatusOK {
+		return Up
+	}
+	if statusCode == http.StatusTooManyRequests {
+		return RateLimited
+	}
+
+	return Down
 }
 
 func CanonnicalizeURL(protocol, domain, url string) string {
@@ -80,6 +87,14 @@ func CanonnicalizeURL(protocol, domain, url string) string {
 	}
 	return protocol + "://" + domain + url
 }
+
+type PageStatus int
+
+const (
+	Up PageStatus = iota
+	Down
+	RateLimited
+)
 
 func CrawlPageRecusively(client *http.Client, protocol, domain, link string) []string {
 	var brokenLinks []string
@@ -92,8 +107,14 @@ func CrawlPageRecusively(client *http.Client, protocol, domain, link string) []s
 		// remove link from queue
 		linksToCrawl = linksToCrawl[:len(linksToCrawl)-1]
 
+		// check wait timer and, if there is a wait timer for this domain
+		// wait that amount of time
+
 		// if it is not valid, add to broken links list & skip
-		if !IsLinkUp(client, linkToCrawl) {
+		// tell us up,down or rate limited
+		// if rate limited, then set a timer for that domain
+		// and add that link to the back of the queue
+		if GetLinkStatus(client, linkToCrawl) == Down {
 			brokenLinks = append(brokenLinks, linkToCrawl)
 			continue
 		}
@@ -138,7 +159,7 @@ func ParseLinks(client *http.Client, links []string) (broken []string, working [
 		go func() {
 			fmt.Fprintln(Debug, "inside go func")
 			defer wg.Done()
-			isLinkBroken := !IsLinkUp(client, link)
+			isLinkBroken := GetLinkStatus(client, link) == Down
 			fmt.Fprintf(Debug, "isLinkBroken: %v\n", isLinkBroken)
 			if isLinkBroken {
 				brokenLinks.Append(link)
