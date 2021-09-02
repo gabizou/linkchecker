@@ -33,6 +33,26 @@ func TestLinkStatus(t *testing.T) {
 	}
 }
 
+func TestCannonicalURL_Relative(t *testing.T) {
+	domain := "bitfield.com"
+	input := "/about"
+	want := "https://bitfield.com/about"
+	got := linkchecker.CanonnicalizeURL("https", domain, input)
+	if want != got {
+		t.Fatalf("Want: %s, Got: %s", want, got)
+	}
+}
+
+func TestCannonicalURL_Absolute(t *testing.T) {
+	domain := "bitfield.com"
+	input := "https://bitfield.com/about"
+	want := "https://bitfield.com/about"
+	got := linkchecker.CanonnicalizeURL("https", domain, input)
+	if want != got {
+		t.Fatalf("Want: %s, Got: %s", want, got)
+	}
+}
+
 // what is a broken link?
 // TestNotOk checks if a link is down
 func TestNotOk(t *testing.T) {
@@ -89,7 +109,7 @@ func TestVerifySubPages(t *testing.T) {
 		fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, badServer.URL)
 	}))
 	linkchecker.Debug = os.Stdout
-	got := linkchecker.CrawlPageRecusively(server.Client(), "127.0.0.1", server.URL)
+	got := linkchecker.CrawlPageRecusively(server.Client(), "https","127.0.0.1", server.URL)
 	if !cmp.Equal(want, got) {
 		t.Fatal(cmp.Diff(want, got))
 	}

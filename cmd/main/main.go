@@ -10,7 +10,7 @@ import (
 
 func main() {
 	linkchecker.Debug = os.Stdout
-	brokenLinks := linkchecker.CrawlPageRecusively(http.DefaultClient, "bitfieldconsulting.com", "https://bitfieldconsulting.com/")
+	brokenLinks := linkchecker.CrawlPageRecusively(http.DefaultClient, "https", "bitfieldconsulting.com", "https://bitfieldconsulting.com/")
 	for _, link := range brokenLinks {
 		fmt.Printf("BROKEN: %s\n", link)
 	}

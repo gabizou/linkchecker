@@ -52,10 +52,12 @@ func (ss *syncSlice) Append(s string) {
 var Debug = io.Discard
 
 func IsLinkUp(client *http.Client, url string) (up bool) {
+	// if there is no colon in the url then prepend the domain to the url
 	fmt.Fprintf(Debug, "IsLinkUp: %s\n", url)
 	resp, err := client.Head(url)
 	fmt.Fprintln(Debug, "GOT HEAD")
 	if err != nil {
+		fmt.Fprintf(Debug, "Err when getting head: %v", err)
 		return false
 	}
 	var statusCode int
@@ -68,17 +70,25 @@ func IsLinkUp(client *http.Client, url string) (up bool) {
 		resp.Body.Close()
 	}
 	// todo let's check the status code against a list of known good status codes
-	fmt.Fprintf(Debug, "Status Code for: %s \n is: %s\n", url, statusCode)
+	fmt.Fprintf(Debug, "Status Code for: %s \n is: %d\n", url, statusCode)
 	return statusCode == http.StatusOK
 }
 
-func CrawlPageRecusively(client *http.Client, domain, link string) []string {
+func CanonnicalizeURL(protocol, domain, url string) string {
+	if strings.Contains(url, ":") {
+		return url
+	}
+	return protocol + "://" + domain + url
+}
+
+func CrawlPageRecusively(client *http.Client, protocol, domain, link string) []string {
 	var brokenLinks []string
 	linksToCrawl := make([]string, 1)
 	linksToCrawl[0] = link
 	for len(linksToCrawl) > 0 {
 		// get next link to check
 		linkToCrawl := linksToCrawl[len(linksToCrawl)-1]
+		linkToCrawl = CanonnicalizeURL(protocol, domain, linkToCrawl)
 		// remove link from queue
 		linksToCrawl = linksToCrawl[:len(linksToCrawl)-1]
 
