@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -12,7 +13,22 @@ import (
 	"github.com/antchfx/htmlquery"
 )
 
+func Run() {
+	Debug = os.Stdout
+	if len (os.Args) < 2 {
+		programName := os.Args[0]
+		fmt.Fprintf(os.Stderr, "Usage: %s Link", programName)
+		os.Exit(1)
+	}
+	link := os.Args[1]
+	brokenLinks := CrawlPageRecusively(http.DefaultClient, link)
+	for _, link := range brokenLinks {
+		fmt.Printf("BROKEN: %s\n", link)
+	}
+}
+
 func GetListOfLinks(client *http.Client, link string) []string {
+	fmt.Fprintf(Debug, "Get request on: %s\n", link)
 	get, err := client.Get(link)
 	if err != nil {
 		return nil
@@ -121,6 +137,7 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 
 		// get next link to check
 		linkToCrawl := linksToCrawl[len(linksToCrawl)-1]
+		fmt.Fprintf(Debug, "Checking link: %s", linkToCrawl)
 		linkToCrawl = PrependDomainIfNecessary(linkToCrawl, domain)
 		linkToCrawl = PrependHttpsIfNecessary(linkToCrawl)
 		// remove link from queue
@@ -138,11 +155,11 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 			continue
 		}
 		// if it is not in our domain we skip
-		if !IsInOurDomain(link, domain) {
+		if !IsInOurDomain(linkToCrawl, domain) {
 			continue
 		}
 		// otherwise we get it's body & add links to linksToCrawl
-		subLinks := GetListOfLinks(client, link)
+		subLinks := GetListOfLinks(client, linkToCrawl)
 		linksToCrawl = append(linksToCrawl, subLinks...)
 	}
 
@@ -154,16 +171,7 @@ func IsInOurDomain(link, domain string) bool {
 	if err != nil {
 		return false
 	}
-	fmt.Fprintf(Debug, "Full Host: %s\n", parse.Host)
 	host := parse.Host
-	// if strings.Contains(parse.Host, ":") {
-	// 	splitHost, _, err := net.SplitHostPort(parse.Host)
-	// 	if err != nil {
-	// 		fmt.Fprintf(Debug, "SplitHostPort err on: %s\n", parse.Host)
-	// 		return false
-	// 	}
-	// 	host = splitHost
-	// }
 	fmt.Fprintf(Debug, "Host: %s\n", host)
 	fmt.Fprintf(Debug, "Domain: %s\n", domain)
 	return host == domain
