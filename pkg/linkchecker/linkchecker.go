@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/antchfx/htmlquery"
 )
@@ -101,6 +102,8 @@ func CrawlPageRecusively(client *http.Client, protocol, domain, link string) []s
 	linksToCrawl := make([]string, 1)
 	linksToCrawl[0] = link
 	for len(linksToCrawl) > 0 {
+		time.Sleep( 500 * time.Millisecond)
+
 		// get next link to check
 		linkToCrawl := linksToCrawl[len(linksToCrawl)-1]
 		linkToCrawl = CanonnicalizeURL(protocol, domain, linkToCrawl)
