@@ -55,23 +55,41 @@ func TestLinkStatus_Down(t *testing.T) {
 	}
 }
 
-func TestCannonicalURL_Relative(t *testing.T) {
-	domain := "bitfield.com"
-	input := "/about"
-	want := "https://bitfield.com/about"
-	got := linkchecker.CanonnicalizeURL("https", domain, input)
-	if want != got {
-		t.Fatalf("Want: %s, Got: %s", want, got)
+func TestPrependDomainIfNecessary(t *testing.T) {
+	tcs := []struct {
+		link string
+		want string
+	}{
+		{"google.com/more", "google.com/more"},
+		{"/more-from-google", "google.com/more-from-google"},
+		{"https://google.com/more", "https://google.com/more"},
+		{"google.com:8080/more", "google.com:8080/more"},
+		{"/more", "google.com/more"},
+	}
+	for _, tc := range tcs {
+		got := linkchecker.PrependDomainIfNecessary(tc.link, "google.com")
+		if tc.want != got {
+			t.Fatalf("Want: %s, Got: %s", tc.want, got)
+		}
 	}
 }
 
-func TestCannonicalURL_Absolute(t *testing.T) {
-	domain := "bitfield.com"
-	input := "https://bitfield.com/about"
-	want := "https://bitfield.com/about"
-	got := linkchecker.CanonnicalizeURL("https", domain, input)
-	if want != got {
-		t.Fatalf("Want: %s, Got: %s", want, got)
+
+func TestPrependHttpsIfNecessary(t *testing.T) {
+	tcs := []struct {
+		link string
+		want string
+	}{
+		{"google.com/more", "https://google.com/more"},
+		{"https://google.com/more", "https://google.com/more"},
+		{"google.com:8080/more", "https://google.com:8080/more"},
+		{"https://127.0.0.1:59476", "https://127.0.0.1:59476"},
+	}
+	for _, tc := range tcs {
+		got := linkchecker.PrependHttpsIfNecessary(tc.link)
+		if tc.want != got {
+			t.Fatalf("Want: %s, Got: %s", tc.want, got)
+		}
 	}
 }
 
@@ -119,8 +137,35 @@ func TestVerifySubPages(t *testing.T) {
 		fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, badServer.URL)
 	}))
 	linkchecker.Debug = os.Stdout
-	got := linkchecker.CrawlPageRecusively(server.Client(), "https","127.0.0.1", server.URL)
+	got := linkchecker.CrawlPageRecusively(server.Client(), server.URL)
 	if !cmp.Equal(want, got) {
+		t.Fatal(cmp.Diff(want, got))
+	}
+}
+
+func TestExtractDomain(t *testing.T) {
+	url := "https://google.com/search"
+	got := linkchecker.ExtractDomain(url)
+	want := "google.com"
+	if got != want {
+		t.Fatal(cmp.Diff(want, got))
+	}
+	url = "google.com/search/more"
+	got = linkchecker.ExtractDomain(url)
+	want = "google.com"
+	if got != want {
+		t.Fatal(cmp.Diff(want, got))
+	}
+	url = "google.com:8080/search/more"
+	got = linkchecker.ExtractDomain(url)
+	want = "google.com:8080"
+	if got != want {
+		t.Fatal(cmp.Diff(want, got))
+	}
+	url = "https://127.0.0.1:59454"
+	got = linkchecker.ExtractDomain(url)
+	want = "127.0.0.1:59454"
+	if got != want {
 		t.Fatal(cmp.Diff(want, got))
 	}
 }
@@ -128,7 +173,7 @@ func TestVerifySubPages(t *testing.T) {
 func TestIsInOurDomain(t *testing.T) {
 	testCases := []struct {
 		link string
-		want  bool
+		want bool
 	}{
 		{"http://www.google.com", false},
 		{"https://www.google.com", false},

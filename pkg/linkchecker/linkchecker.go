@@ -3,7 +3,6 @@ package linkchecker
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -82,11 +81,18 @@ func GetLinkStatus(client *http.Client, url string) PageStatus {
 	return Down
 }
 
-func CanonnicalizeURL(protocol, domain, url string) string {
-	if strings.Contains(url, ":") {
-		return url
+func PrependDomainIfNecessary(link string, domain string) string {
+	if strings.HasPrefix(link, "/") { // todo domain = localhost may break this
+		return domain + link
 	}
-	return protocol + "://" + domain + url
+	return link
+}
+
+func PrependHttpsIfNecessary(link string) string {
+	if strings.HasPrefix(link, "http") {
+		return link
+	}
+	return "https://" + link
 }
 
 type PageStatus int
@@ -97,16 +103,26 @@ const (
 	RateLimited
 )
 
-func CrawlPageRecusively(client *http.Client, protocol, domain, link string) []string {
+func ExtractDomain(link string) string {
+	parse, err := url.Parse(PrependHttpsIfNecessary(link))
+	if err != nil {
+		return link // todo ?
+	}
+	return parse.Host
+}
+
+func CrawlPageRecusively(client *http.Client, link string) []string {
 	var brokenLinks []string
 	linksToCrawl := make([]string, 1)
 	linksToCrawl[0] = link
+	domain := ExtractDomain(link)
 	for len(linksToCrawl) > 0 {
-		time.Sleep( 500 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 
 		// get next link to check
 		linkToCrawl := linksToCrawl[len(linksToCrawl)-1]
-		linkToCrawl = CanonnicalizeURL(protocol, domain, linkToCrawl)
+		linkToCrawl = PrependDomainIfNecessary(linkToCrawl, domain)
+		linkToCrawl = PrependHttpsIfNecessary(linkToCrawl)
 		// remove link from queue
 		linksToCrawl = linksToCrawl[:len(linksToCrawl)-1]
 
@@ -140,15 +156,16 @@ func IsInOurDomain(link, domain string) bool {
 	}
 	fmt.Fprintf(Debug, "Full Host: %s\n", parse.Host)
 	host := parse.Host
-	if strings.Contains(parse.Host, ":") {
-		splitHost, _, err := net.SplitHostPort(parse.Host)
-		if err != nil {
-			fmt.Fprintf(Debug, "SplitHostPort err on: %s\n", parse.Host)
-			return false
-		}
-		host = splitHost
-	}
+	// if strings.Contains(parse.Host, ":") {
+	// 	splitHost, _, err := net.SplitHostPort(parse.Host)
+	// 	if err != nil {
+	// 		fmt.Fprintf(Debug, "SplitHostPort err on: %s\n", parse.Host)
+	// 		return false
+	// 	}
+	// 	host = splitHost
+	// }
 	fmt.Fprintf(Debug, "Host: %s\n", host)
+	fmt.Fprintf(Debug, "Domain: %s\n", domain)
 	return host == domain
 }
 
