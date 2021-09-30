@@ -17,11 +17,11 @@ func Run() {
 	Debug = os.Stdout
 	if len (os.Args) < 2 {
 		programName := os.Args[0]
-		fmt.Fprintf(os.Stderr, "Usage: %s Link", programName)
+		fmt.Fprintf(os.Stderr, "Usage: %s Link\n", programName)
 		os.Exit(1)
 	}
 	link := os.Args[1]
-	brokenLinks := CrawlPageRecursively(http.DefaultClient, link)
+	brokenLinks := CrawlWebsite(http.DefaultClient, link)
 	for _, link := range brokenLinks {
 		fmt.Printf("BROKEN: %s\n", link)
 	}
@@ -71,7 +71,7 @@ func GetLinkStatus(client *http.Client, url string) PageStatus {
 	// if there is no colon in the url then prepend the domain to the url
 	fmt.Fprintf(Debug, "GetLinkStatus: %s\n", url)
 	resp, err := client.Head(url)
-	fmt.Fprintln(Debug, "GOT HEAD")
+	fmt.Fprintf(Debug, "GOT HEAD\n")
 	if err != nil {
 		fmt.Fprintf(Debug, "Err when getting head: %v\n", err)
 		return Down
@@ -126,7 +126,7 @@ func ExtractDomain(link string) string {
 	return parse.Host
 }
 
-func CrawlPageRecursively(client *http.Client, link string) []string {
+func CrawlWebsite(client *http.Client, link string) []string {
 	var brokenLinks []string
 	linksToCrawl := make([]string, 1)
 	linksToCrawl[0] = link
@@ -135,41 +135,41 @@ func CrawlPageRecursively(client *http.Client, link string) []string {
 	for len(linksToCrawl) > 0 {
 		time.Sleep(500 * time.Millisecond)
 
-		// get next link to check
 		linkToCrawl := linksToCrawl[len(linksToCrawl)-1]
-		fmt.Fprintf(Debug, "Checking link: %s", linkToCrawl)
-		linkToCrawl = PrependDomainIfNecessary(linkToCrawl, domain)
-		linkToCrawl = PrependHttpsIfNecessary(linkToCrawl)
-		// remove link from queue
+		linkToCrawl = canonicalizeLink(linkToCrawl, domain)
+		fmt.Fprintf(Debug, "Checking link: %s\n", linkToCrawl)
 		linksToCrawl = linksToCrawl[:len(linksToCrawl)-1]
 		checkedLinks[linkToCrawl] = true
 
-		// check wait timer and, if there is a wait timer for this domain
-		// wait that amount of time
-
-		// if it is not valid, add to broken links list & skip
-		// tell us up,down or rate limited
-		// if rate limited, then set a timer for that domain
-		// and add that link to the back of the queue
 		if GetLinkStatus(client, linkToCrawl) == Down {
 			brokenLinks = append(brokenLinks, linkToCrawl)
 			continue
 		}
-		// if it is not in our domain we skip
+
 		if !IsInOurDomain(linkToCrawl, domain) {
 			continue
 		}
-		// otherwise we get it's body & add links to linksToCrawl
+
 		subLinks := GetListOfLinks(client, linkToCrawl)
-		for _, subLink := range subLinks {
-			_, ok := checkedLinks[subLink]
-			if !ok {
-				linksToCrawl = append(linksToCrawl, subLink)
+
+		fmt.Fprintf(Debug, "Checked Link: %v\n", checkedLinks)
+
+		for _, sublink := range subLinks {
+			sublink = canonicalizeLink(sublink, domain)
+			checked := checkedLinks[sublink]
+			if !checked {
+				linksToCrawl = append(linksToCrawl, sublink)
 			}
 		}
 	}
 
 	return brokenLinks
+}
+
+func canonicalizeLink(link, domain string) string {
+	link = PrependDomainIfNecessary(link, domain)
+	link = PrependHttpsIfNecessary(link)
+	return link
 }
 
 func IsInOurDomain(link, domain string) bool {
@@ -191,7 +191,7 @@ func ParseLinks(client *http.Client, links []string) (broken []string, working [
 		link := link
 		wg.Add(1)
 		go func() {
-			fmt.Fprintln(Debug, "inside go func")
+			fmt.Fprintf(Debug, "inside go func\n")
 			defer wg.Done()
 			isLinkBroken := GetLinkStatus(client, link) == Down
 			fmt.Fprintf(Debug, "isLinkBroken: %v\n", isLinkBroken)

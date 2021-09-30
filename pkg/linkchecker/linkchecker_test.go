@@ -137,7 +137,7 @@ func TestVerifySubPages(t *testing.T) {
 		fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, badServer.URL)
 	}))
 	linkchecker.Debug = os.Stdout
-	got := linkchecker.CrawlPageRecursively(server.Client(), server.URL)
+	got := linkchecker.CrawlWebsite(server.Client(), server.URL)
 	if !cmp.Equal(want, got) {
 		t.Fatal(cmp.Diff(want, got))
 	}
@@ -163,7 +163,7 @@ func TestCyclicLinkLoops(t *testing.T) {
 	otherURL = server1.URL
 
 	linkchecker.Debug = os.Stdout
-	got := linkchecker.CrawlPageRecursively(server1.Client(), server1.URL)
+	got := linkchecker.CrawlWebsite(server1.Client(), server1.URL)
 	if !cmp.Equal(want, got) {
 		t.Fatal(cmp.Diff(want, got))
 	}
