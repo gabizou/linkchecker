@@ -137,9 +137,41 @@ func TestVerifySubPages(t *testing.T) {
 		fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, badServer.URL)
 	}))
 	linkchecker.Debug = os.Stdout
-	got := linkchecker.CrawlPageRecusively(server.Client(), server.URL)
+	got := linkchecker.CrawlPageRecursively(server.Client(), server.URL)
 	if !cmp.Equal(want, got) {
 		t.Fatal(cmp.Diff(want, got))
+	}
+}
+
+func TestCyclicLinkLoops(t *testing.T) {
+	var otherURL string
+	var handlerHeadCallCount int
+	var handlerGetCallCount int
+	server1 := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		switch request.Method {
+		case http.MethodGet:
+			handlerGetCallCount++
+		case http.MethodHead:
+			handlerHeadCallCount++
+		}
+		fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, otherURL)
+	}))
+	var want []string
+	wantGetCount := 1
+	wantHeadCount := 1
+	otherURL = server1.URL
+
+	linkchecker.Debug = os.Stdout
+	got := linkchecker.CrawlPageRecursively(server1.Client(), server1.URL)
+	if !cmp.Equal(want, got) {
+		t.Fatal(cmp.Diff(want, got))
+	}
+	if wantGetCount != handlerGetCallCount {
+		t.Fatalf("handler get called %d times, expected %d times", handlerGetCallCount, wantGetCount)
+	}
+	if wantHeadCount != handlerHeadCallCount {
+		t.Fatalf("handler head called %d times, expected %d times", handlerHeadCallCount, wantHeadCount)
 	}
 }
 

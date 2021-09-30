@@ -21,7 +21,7 @@ func Run() {
 		os.Exit(1)
 	}
 	link := os.Args[1]
-	brokenLinks := CrawlPageRecusively(http.DefaultClient, link)
+	brokenLinks := CrawlPageRecursively(http.DefaultClient, link)
 	for _, link := range brokenLinks {
 		fmt.Printf("BROKEN: %s\n", link)
 	}
@@ -73,28 +73,26 @@ func GetLinkStatus(client *http.Client, url string) PageStatus {
 	resp, err := client.Head(url)
 	fmt.Fprintln(Debug, "GOT HEAD")
 	if err != nil {
-		fmt.Fprintf(Debug, "Err when getting head: %v", err)
+		fmt.Fprintf(Debug, "Err when getting head: %v\n", err)
 		return Down
 	}
 	var statusCode int
 	if resp != nil {
 		statusCode = resp.StatusCode
-	} else {
-		statusCode = 0
 	}
 	if resp.Body != nil {
 		resp.Body.Close()
 	}
 	// todo let's check the status code against a list of known good status codes
 	fmt.Fprintf(Debug, "Status Code for: %s \n is: %d\n", url, statusCode)
-	if statusCode == http.StatusOK {
+	switch statusCode {
+	case http.StatusOK,http.StatusAccepted,http.StatusCreated:
 		return Up
-	}
-	if statusCode == http.StatusTooManyRequests {
+	case http.StatusTooManyRequests:
 		return RateLimited
+	default:
+		return Down
 	}
-
-	return Down
 }
 
 func PrependDomainIfNecessary(link string, domain string) string {
@@ -104,6 +102,7 @@ func PrependDomainIfNecessary(link string, domain string) string {
 	return link
 }
 
+// todo - fix for other protocols
 func PrependHttpsIfNecessary(link string) string {
 	if strings.HasPrefix(link, "http") {
 		return link
@@ -127,11 +126,12 @@ func ExtractDomain(link string) string {
 	return parse.Host
 }
 
-func CrawlPageRecusively(client *http.Client, link string) []string {
+func CrawlPageRecursively(client *http.Client, link string) []string {
 	var brokenLinks []string
 	linksToCrawl := make([]string, 1)
 	linksToCrawl[0] = link
 	domain := ExtractDomain(link)
+	checkedLinks := make(map[string]bool)
 	for len(linksToCrawl) > 0 {
 		time.Sleep(500 * time.Millisecond)
 
@@ -142,6 +142,7 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 		linkToCrawl = PrependHttpsIfNecessary(linkToCrawl)
 		// remove link from queue
 		linksToCrawl = linksToCrawl[:len(linksToCrawl)-1]
+		checkedLinks[linkToCrawl] = true
 
 		// check wait timer and, if there is a wait timer for this domain
 		// wait that amount of time
@@ -160,7 +161,12 @@ func CrawlPageRecusively(client *http.Client, link string) []string {
 		}
 		// otherwise we get it's body & add links to linksToCrawl
 		subLinks := GetListOfLinks(client, linkToCrawl)
-		linksToCrawl = append(linksToCrawl, subLinks...)
+		for _, subLink := range subLinks {
+			_, ok := checkedLinks[subLink]
+			if !ok {
+				linksToCrawl = append(linksToCrawl, subLink)
+			}
+		}
 	}
 
 	return brokenLinks
