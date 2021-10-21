@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -130,38 +131,36 @@ func CrawlWebsite(client *http.Client, link string) []string {
 	var brokenLinks []string
 	linksToCrawl := make([]string, 1)
 	linksToCrawl[0] = link
-	domain := ExtractDomain(link)
-	checkedLinks := make(map[string]bool)
-	for len(linksToCrawl) > 0 {
-		time.Sleep(500 * time.Millisecond)
-
-		linkToCrawl := linksToCrawl[len(linksToCrawl)-1]
-		linkToCrawl = canonicalizeLink(linkToCrawl, domain)
-		fmt.Fprintf(Debug, "Checking link: %s\n", linkToCrawl)
-		linksToCrawl = linksToCrawl[:len(linksToCrawl)-1]
-		checkedLinks[linkToCrawl] = true
-
-		if GetLinkStatus(client, linkToCrawl) == Down {
-			brokenLinks = append(brokenLinks, linkToCrawl)
-			continue
-		}
-
-		if !IsInOurDomain(linkToCrawl, domain) {
-			continue
-		}
-
-		subLinks := GetListOfLinks(client, linkToCrawl)
-
-		fmt.Fprintf(Debug, "Checked Link: %v\n", checkedLinks)
-
-		for _, sublink := range subLinks {
-			sublink = canonicalizeLink(sublink, domain)
-			checked := checkedLinks[sublink]
-			if !checked {
-				linksToCrawl = append(linksToCrawl, sublink)
-			}
-		}
-	}
+	//checkedLinks := make(map[string]bool)
+	broken, _ := ParseLinks(client, link, linksToCrawl)
+	brokenLinks = append(brokenLinks, broken...)
+	//for len(linksToCrawl) > 0 {
+	//	time.Sleep(500 * time.Millisecond)
+	//
+	//	linkToCrawl := linksToCrawl[len(linksToCrawl)-1]
+	//	linkToCrawl = canonicalizeLink(linkToCrawl, domain)
+	//	fmt.Fprintf(Debug, "Checking link: %s\n", linkToCrawl)
+	//	linksToCrawl = linksToCrawl[:len(linksToCrawl)-1]
+	//	checkedLinks[linkToCrawl] = true
+	//
+	//
+	//
+	//	if !IsInOurDomain(linkToCrawl, domain) {
+	//		continue
+	//	}
+	//	//
+	//	//subLinks := GetListOfLinks(client, linkToCrawl)
+	//	//
+	//	//fmt.Fprintf(Debug, "Checked Link: %v\n", checkedLinks)
+	//	//
+	//	//for _, sublink := range subLinks {
+	//	//	sublink = canonicalizeLink(sublink, domain)
+	//	//	checked := checkedLinks[sublink]
+	//	//	if !checked {
+	//	//		linksToCrawl = append(linksToCrawl, sublink)
+	//	//	}
+	//	//}
+	//}
 
 	return brokenLinks
 }
@@ -183,26 +182,81 @@ func IsInOurDomain(link, domain string) bool {
 	return host == domain
 }
 
-func ParseLinks(client *http.Client, links []string) (broken []string, working []string) {
+var workerPool = runtime.NumCPU() * 8
+
+func ParseLinks(client *http.Client, website string, links []string) (broken []string, working []string) {
 	var wg sync.WaitGroup
-	brokenLinks := NewSyncSlice()
-	workingLinks := NewSyncSlice()
-	for _, link := range links {
-		link := link
-		wg.Add(1)
+	brokenLinks := newCollector()
+	workingLinks := newCollector()
+	mailbox := make(chan string, workerPool)
+	stop := make(chan interface{})
+	wg.Add(workerPool)
+	domain := ExtractDomain(website)
+	appendLinks := make(chan string, 512)
+	visited := make(map[string]bool)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			case link :=<-appendLinks:
+				if !visited[link] {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						mailbox<-link
+					}()
+					visited[link] = true
+				}
+			}
+		}
+	}()
+	for i := 0; i < workerPool; i++ {
 		go func() {
-			fmt.Fprintf(Debug, "inside go func\n")
 			defer wg.Done()
-			isLinkBroken := GetLinkStatus(client, link) == Down
-			fmt.Fprintf(Debug, "isLinkBroken: %v\n", isLinkBroken)
-			if isLinkBroken {
-				brokenLinks.Append(link)
-			} else {
-				workingLinks.Append(link)
+			for {
+				select {
+				case <-stop:
+					return
+				case link := <-mailbox:
+					status := GetLinkStatus(client, link)
+					switch status {
+					case Down:
+						fmt.Fprintf(Debug, "link is broken: %v\n", link)
+						brokenLinks.addLink(link)
+					case RateLimited:
+						fmt.Printf("Getting rate limited on %s\n", link)
+					case Up:
+						fmt.Printf("Got OK for link, will get sublinks %s\n", link)
+						subLinks := GetListOfLinks(client, link)
+						for _, sublink := range subLinks {
+							sublink = canonicalizeLink(sublink, domain)
+							appendLinks <- sublink
+						}
+						workingLinks.addLink(link)
+					}
+				}
 			}
 		}()
 	}
+	for _, link := range links {
+		link := link
+		mailbox <- link
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for range time.NewTicker(time.Second).C {
+			fmt.Printf("length of mailbox: %d\n", len(mailbox) + len(appendLinks))
+			if len(mailbox) == 0 && len(appendLinks) == 0 {
+				close(stop)
+				return
+			}
+		}
+	}()
 	wg.Wait()
 
-	return brokenLinks.Items, workingLinks.Items
+	return brokenLinks.getLinks(), workingLinks.getLinks()
 }
