@@ -206,6 +206,10 @@ func ParseLinks(client *http.Client, website string, links []string) (broken []s
 	wg.Add(workerPool)
 	domain := ExtractDomain(website)
 	appendLinks := make(chan string, 512)
+	for _, link := range links {
+		link := link
+		appendLinks <- link
+	}
 	visited := make(map[string]bool)
 	wg.Add(1)
 	go func() {
@@ -216,12 +220,12 @@ func ParseLinks(client *http.Client, website string, links []string) (broken []s
 				return
 			case link := <-appendLinks:
 				if !visited[link] {
+					visited[link] = true
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
 						mailbox <- link
 					}()
-					visited[link] = true
 				}
 			}
 		}
@@ -239,28 +243,24 @@ func ParseLinks(client *http.Client, website string, links []string) (broken []s
 					case Down:
 						fmt.Fprintf(Debug, "link is broken: %v\n", link)
 						brokenLinks.addLink(link)
-						break
 					case RateLimited:
 						fmt.Printf("Getting rate limited on %s\n", link)
-						break
 					case Up:
 						fmt.Printf("Got OK for link, will get sublinks %s\n", link)
-						subLinks := GetListOfLinks(client, link)
-						for _, sublink := range subLinks {
-							sublink = canonicalizeLink(sublink, domain)
-							appendLinks <- sublink
-						}
 						workingLinks.addLink(link)
-						break
+						if IsInOurDomain(link, domain) {
+							subLinks := GetListOfLinks(client, link)
+							for _, sublink := range subLinks {
+								sublink = canonicalizeLink(sublink, domain)
+								appendLinks <- sublink
+							}
+						}
 					}
 				}
 			}
 		}()
 	}
-	for _, link := range links {
-		link := link
-		mailbox <- link
-	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
