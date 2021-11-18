@@ -10,7 +10,7 @@ type collector struct {
 	outbox  chan []string
 	stop    chan interface{}
 	// this is our state stuff
-	links   []string
+	links []string
 }
 
 func newCollector() *collector {

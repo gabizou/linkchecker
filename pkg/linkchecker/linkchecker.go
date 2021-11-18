@@ -15,17 +15,30 @@ import (
 )
 
 func Run() {
-	Debug = os.Stdout
-	if len (os.Args) < 2 {
+	if len(os.Args) < 2 {
 		programName := os.Args[0]
 		fmt.Fprintf(os.Stderr, "Usage: %s Link\n", programName)
 		os.Exit(1)
 	}
 	link := os.Args[1]
-	brokenLinks := CrawlWebsite(http.DefaultClient, link)
+
+	tripper := &tripChecker{}
+	client := &http.Client{
+		Transport: tripper,
+		Timeout:   time.Second * 2,
+	}
+	brokenLinks := CrawlWebsite(client, link)
 	for _, link := range brokenLinks {
 		fmt.Printf("BROKEN: %s\n", link)
 	}
+}
+
+type tripChecker struct {
+}
+
+func (t *tripChecker) RoundTrip(request *http.Request) (*http.Response, error) {
+	fmt.Printf("got request %v\n", request)
+	return http.DefaultTransport.RoundTrip(request)
 }
 
 func GetListOfLinks(client *http.Client, link string) []string {
@@ -87,7 +100,7 @@ func GetLinkStatus(client *http.Client, url string) PageStatus {
 	// todo let's check the status code against a list of known good status codes
 	fmt.Fprintf(Debug, "Status Code for: %s \n is: %d\n", url, statusCode)
 	switch statusCode {
-	case http.StatusOK,http.StatusAccepted,http.StatusCreated:
+	case http.StatusOK, http.StatusAccepted, http.StatusCreated:
 		return Up
 	case http.StatusTooManyRequests:
 		return RateLimited
@@ -201,12 +214,12 @@ func ParseLinks(client *http.Client, website string, links []string) (broken []s
 			select {
 			case <-stop:
 				return
-			case link :=<-appendLinks:
+			case link := <-appendLinks:
 				if !visited[link] {
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
-						mailbox<-link
+						mailbox <- link
 					}()
 					visited[link] = true
 				}
@@ -226,8 +239,10 @@ func ParseLinks(client *http.Client, website string, links []string) (broken []s
 					case Down:
 						fmt.Fprintf(Debug, "link is broken: %v\n", link)
 						brokenLinks.addLink(link)
+						break
 					case RateLimited:
 						fmt.Printf("Getting rate limited on %s\n", link)
+						break
 					case Up:
 						fmt.Printf("Got OK for link, will get sublinks %s\n", link)
 						subLinks := GetListOfLinks(client, link)
@@ -236,6 +251,7 @@ func ParseLinks(client *http.Client, website string, links []string) (broken []s
 							appendLinks <- sublink
 						}
 						workingLinks.addLink(link)
+						break
 					}
 				}
 			}
@@ -249,7 +265,7 @@ func ParseLinks(client *http.Client, website string, links []string) (broken []s
 	go func() {
 		defer wg.Done()
 		for range time.NewTicker(time.Second).C {
-			fmt.Printf("length of mailbox: %d\n", len(mailbox) + len(appendLinks))
+			fmt.Printf("length of mailbox: %d\n", len(mailbox)+len(appendLinks))
 			if len(mailbox) == 0 && len(appendLinks) == 0 {
 				close(stop)
 				return
