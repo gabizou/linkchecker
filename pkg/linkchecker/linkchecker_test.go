@@ -74,7 +74,6 @@ func TestPrependDomainIfNecessary(t *testing.T) {
 	}
 }
 
-
 func TestPrependHttpsIfNecessary(t *testing.T) {
 	tcs := []struct {
 		link string
@@ -218,5 +217,28 @@ func TestIsInOurDomain(t *testing.T) {
 		if tc.want != got {
 			t.Errorf("Link: %s, Want: %t, got: %t", tc.link, tc.want, got)
 		}
+	}
+}
+
+func TestOnlyHeadForThirdPartySites(t *testing.T) {
+	thirdPartyHeadCallCount := 0
+	thirdParty := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		switch request.Method {
+		case http.MethodGet:
+			t.Fatal("Called get on third party site")
+		case http.MethodHead:
+			thirdPartyHeadCallCount++
+		}
+	}))
+	ourWebsite := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(writer, `<a href="%s">Link Here</a>`, thirdParty.URL)
+	}))
+
+	linkchecker.Debug = os.Stdout
+	_ = linkchecker.CrawlWebsite(ourWebsite.Client(), ourWebsite.URL)
+	if thirdPartyHeadCallCount != 1 {
+		t.Fatalf("handler get called %d times, expected %d times", thirdPartyHeadCallCount, 1)
 	}
 }
